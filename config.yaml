@@ -1,0 +1,17 @@
+allowlist:
+  app_data:
+    users:
+      safe_columns:
+        id:
+          description: "Unique identifier for the user."
+        username:
+          description: "Public-facing username chosen by the user."
+
+    products:
+      safe_columns:
+        id:
+          description: "Primary key for the product."
+        name:
+          description: "Public-facing product name."
+        price:
+          description: "Public sale price visible to customers."
