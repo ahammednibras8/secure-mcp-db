@@ -80,6 +80,20 @@ export async function validatedSQL(
 
   // DB MODE
   if (mode === "db") {
+    const tableName = stmt.from?.[0]?.name?.name?.toLowerCase();
+
+    const allowedTables = Object.values(config).flatMap((schema) =>
+      Object.keys(schema)
+    );
+
+    if (!allowedTables.includes(tableName)) {
+      return {
+        ok: false,
+        error: `Table '${tableName}' is not allowed.`,
+        hint: "Query only tables defined in config.yaml allowlist.",
+      };
+    }
+
     if (stmt.from && stmt.from?.[0]?.joins) {
       for (const join of stmt.from[0].joins) {
         if (!join.on) {
