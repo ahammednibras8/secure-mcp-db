@@ -5,7 +5,6 @@
   "imports": {
     "@std/assert": "jsr:@std/assert@1",
     "pgsql-ast-parser": "npm:pgsql-ast-parser",
-    "@duckdb/duckdb-wasm": "npm:@duckdb/duckdb-wasm",
     "zod": "npm:zod"
   }
 }

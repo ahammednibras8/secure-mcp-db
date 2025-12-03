@@ -1,5 +1,5 @@
 import { parse } from "pgsql-ast-parser";
-import * as DuckDB from "@duckdb/duckdb-wasm";
+import { DB } from "https://deno.land/x/sqlite/mod.ts";
 
 const FORBIDDEN_KEYWORDS = [
   "INSERT",
@@ -120,20 +120,27 @@ function computeDynamicRowLimit(
   return Math.max(1, maxRows);
 }
 
-// 3. DuckDB Engine Initialization
-async function initDuck(): Promise<any> {
-  const bundles: any = DuckDB.getJsDelivrBundles();
-  const worker = new Worker(bundles.worker, { type: "module" });
-  const logger = new DuckDB.ConsoleLogger();
-  const db = await (DuckDB as any).createDuckDB(
-    worker,
-    bundles.mainModule,
-    bundles.pthreadWorker,
-    { logger },
+// 3. CSV into SQLite Loader
+function loadCsvIntoSQLite(filePath: string): DB {
+  const csv = Deno.readTextFileSync(filePath).trim();
+  const [headerLine, ...lines] = csv.split("\n");
+  const columns = headerLine.split(",");
+
+  const db = new DB();
+  db.execute(
+    `CREATE TABLE artifact (${columns.map((c) => `"${c}" TEXT`).join(",")});`,
   );
 
-  const conn = await db.connect();
-  return conn;
+  const insert = db.prepareQuery(
+    `INSERT INTO artifact VALUES (${columns.map(() => "?").join(",")})`,
+  );
+
+  for (const line of lines) {
+    insert.execute(line.split(","));
+  }
+
+  insert.finalize();
+  return db;
 }
 
 // 4. Execute Validate SQL (Artifacts Only)
@@ -154,55 +161,33 @@ export async function executeAnalysisQuery(params: {
     };
   }
 
-  const conn = await initDuck();
+  const db = loadCsvIntoSQLite(filePath);
 
-  if (filePath.endsWith(".csv")) {
-    await conn.query(
-      `CREATE TABLE artifact AS SELECT * FROM read_csv_auto('${filePath}');`,
-    );
-  } else if (filePath.endsWith(".parquet")) {
-    await conn.query(
-      `CREATE TABLE artifact AS SELECT * FROM read_parquet('${filePath}');`,
-    );
-  } else {
-    return {
-      error: "Unsupported file format",
-      hint: "Only CSV or Parquet are supported",
-    };
-  }
+  const rows = db.queryEntries(sql_query);
 
-  const result = await conn.query(sql_query);
+  if (rows.length === 0) return { rows: 0, data: [] };
 
-  if (result.length === 0) {
-    return { rows: 0, data: [] };
-  }
-
-  // Dynamic Token-Aware Row Limit
-  const sampleRow = result[0];
-  const dynamicLimit = computeDynamicRowLimit(sampleRow);
-
-  if (result.length > dynamicLimit) {
+  const limit = computeDynamicRowLimit(rows[0]);
+  if (rows.length > limit) {
     const slipId = `result_${crypto.randomUUID()}.csv`;
     const slipPath = `/tmp/artifacts/${slipId}`;
 
-    const header = Object.keys(result[0]).join(",") + "\n";
-    const body = result.map((r: any) => Object.values(r).join(",")).join("\n");
-
+    const header = Object.keys(rows[0]).join(",") + "\n";
+    const body = rows.map((r) => Object.values(r).join(",")).join("\n");
     await Deno.writeTextFile(slipPath, header + body);
 
     return {
       delivery_slip: {
         file_id: slipId,
-        rows: result.length,
-        allowed_rows: dynamicLimit,
-        note:
-          "Result exceeds safe token limits. Use analyse_artifact on the slip",
+        rows: rows.length,
+        allowed_rows: limit,
+        note: "Result trimmed due to token limits.",
       },
     };
   }
 
   return {
-    rows: result.length,
-    data: result,
+    rows: rows.length,
+    data: rows,
   };
 }
