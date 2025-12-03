@@ -70,3 +70,22 @@ export function filterRows(
 
   return cleanRows;
 }
+
+export function identitySchema(
+  headers: string[],
+  config: AllowlistConfig,
+): string | null {
+  for (const [schemaName, tables] of Object.entries(config)) {
+    for (const [tableName, tableDef] of Object.entries(tables)) {
+      const allowedCols = Object.keys(tableDef.safe_columns);
+
+      const isStrictMatch = headers.every((h) => allowedCols.includes(h));
+
+      if (isStrictMatch) {
+        return tableName;
+      }
+    }
+  }
+
+  return null;
+}
