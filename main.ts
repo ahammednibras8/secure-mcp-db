@@ -11,14 +11,14 @@ for (const [toolName, def] of Object.entries(tools)) {
   server.tool(
     toolName,
     def.description,
-    def.inputSchema,
+    def.inputSchema.shape,
     async (args: unknown) => {
       const result = await handleToolCall(toolName, args);
       return {
         content: [
           {
-            type: "json",
-            json: result,
+            type: "text",
+            text: JSON.stringify(result, null, 2),
           },
         ],
       };
