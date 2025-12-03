@@ -83,9 +83,7 @@ export async function validatedSQL(
   if (mode === "db") {
     const tableName = stmt.from?.[0]?.name?.name?.toLowerCase();
 
-    const allowedTables = Object.values(config).flatMap((schema) =>
-      Object.keys(schema)
-    );
+    const allowedTables = Object.keys(config.app_data);
 
     if (!allowedTables.includes(tableName)) {
       return {
@@ -243,44 +241,53 @@ export async function executeAnalysisQuery(params: {
 
 export async function executeSafeDbQuery(sql_query: string) {
   // 1. Parse AST to extract table name
-  const ast = parse(sql_query);
+  let ast;
+  try {
+    ast = parse(sql_query);
+  } catch (e) {
+    return { error: "Invalid SQL syntax", hint: String(e) };
+  }
+
   const stmt = ast[0] as any;
+  const tableNameRaw = stmt.from?.[0]?.name?.name;
 
-  const tableName = stmt.from?.[0]?.name?.name?.toLowerCase();
-
-  if (!tableName) {
+  if (!tableNameRaw) {
     return {
       error: "Unable to determine target table from query",
-      hint: "Ensure your query uses a FROM clause",
+      hint:
+        "Ensure your query uses a FROM clause with a single table (e.g. FROM users).",
     };
   }
 
+  const tableName = String(tableNameRaw).toLowerCase();
+
   // 2. Find allowed columens for this table
   let allowedColumns: Record<string, { description: string }> | null = null;
-
-  for (const schemaObj of Object.values(config)) {
-    if (schemaObj[tableName]) {
-      allowedColumns = schemaObj[tableName].safe_columns;
-      break;
-    }
+  if (config.app_data && config.app_data[tableName]) {
+    allowedColumns = config.app_data[tableName].safe_columns;
   }
 
   if (!allowedColumns) {
     return {
       error:
         `Table '${tableName}' is allowed to query but not configured for output sanitization.`,
-      hint: "Add this table to config.yaml",
+      hint:
+        "Add this table and its safe_columns to config.yaml under allowlist.app_data.",
     };
   }
 
   // 3. Run the database query
-  const rows = await runDbQuery(sql_query);
+  const dbResult = await runDbQuery(sql_query);
 
-  if ("error" in rows) {
-    return rows;
+  if ("error" in dbResult) {
+    return dbResult;
   }
 
-  if (rows.length === 0) return { rows: 0, data: [] };
+  const rows = dbResult.rows;
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { rows: 0, data: [] };
+  }
 
   // 4. Token-Aware row safety
   const sampleRow = rows[0];

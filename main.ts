@@ -1,3 +1,4 @@
+import "./src/env.ts";
 import { McpServer } from "npm:@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "npm:@modelcontextprotocol/sdk/server/stdio.js";
 import { handleToolCall, tools } from "./src/server.ts";

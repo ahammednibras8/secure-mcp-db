@@ -1,29 +1,50 @@
-import { Pool } from "https://deno.land/x/postgres@v0.19.5/mod.ts";
+import { Pool } from "postgres";
 import { computeDynamicRowLimit } from "./safety.ts";
 
-const pool = new Pool(
-  {
-    database: Deno.env.get("DB_NAME"),
-    hostname: Deno.env.get("DB_HOST"),
-    port: 5432,
+let pool: Pool | null = null;
 
-    user: Deno.env.get("DB_USER") ?? "mcp_agent",
-    password: Deno.env.get("DB_PASSWORD"),
+function getPool(): Pool {
+  if (!pool) {
+    pool = new Pool(
+      {
+        database: Deno.env.get("DB_NAME"),
+        hostname: Deno.env.get("DB_HOST"),
+        port: 5432,
 
-    tls: { enabled: false },
-  },
-  10,
-);
+        user: Deno.env.get("DB_USER") ?? "mcp_agent",
+        password: Deno.env.get("DB_PASSWORD"),
+      },
+      10,
+    );
+  }
+  return pool;
+}
 
 export async function runDbQuery(sql: string) {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     const result = await client.queryObject(sql);
+    const rows = (result.rows as Array<Record<string, any>>) ?? [];
 
-    return (result.rows as Array<Record<string, any>>) ?? [];
+    if (rows.length === 0) {
+      return { rows: [] };
+    }
+
+    const sampleRow = rows[0];
+    const dynamicLimit = computeDynamicRowLimit(sampleRow);
+
+    if (rows.length > dynamicLimit) {
+      return {
+        error: "Result exceeds token-safe row limit",
+        hint:
+          `Rows returned: ${rows.length}, allowed_rows: ${dynamicLimit}. Add a tighter LIMIT`,
+      };
+    }
+
+    return { rows };
   } finally {
     client.release();
   }
 }
 
-export default pool;
+export default getPool;
