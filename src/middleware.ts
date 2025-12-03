@@ -208,7 +208,7 @@ export async function executeAnalysisQuery(params: {
   }
 
   // 5. filter rows using the allowlist
-  const cleaned = filterRows(rows, config.app_data.users.safe_columns);
+  const cleaned = filterRows(rows, allowedColumns);
 
   return {
     rows: cleaned.length,
