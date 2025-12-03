@@ -1,6 +1,6 @@
 import { parse } from "pgsql-ast-parser";
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
-import { filterRows, loadConfig } from "./safety.ts";
+import { filterRows, identifySchema, loadConfig } from "./safety.ts";
 
 const config = await loadConfig();
 
@@ -168,27 +168,46 @@ export async function executeAnalysisQuery(params: {
 
   const rows = db.queryEntries(sql_query);
 
-  if (rows.length === 0) return { rows: 0, data: [] };
+  // 1. get headers (prefer runtime row, fallback to CSV header)
+  let headers: string[] = [];
+  if (rows.length > 0) {
+    headers = Object.keys(rows[0]);
+  } else {
+    const csv = Deno.readTextFileSync(filePath).trim();
+    const [headerLine] = csv.split("\n");
+    headers = headerLine.split(",");
+  }
 
-  const limit = computeDynamicRowLimit(rows[0]);
-  if (rows.length > limit) {
-    const slipId = `result_${crypto.randomUUID()}.csv`;
-    const slipPath = `/tmp/artifacts/${slipId}`;
+  // 2. normalize headers
+  headers = headers.map((h) => h.trim().toLowerCase());
 
-    const header = Object.keys(rows[0]).join(",") + "\n";
-    const body = rows.map((r) => Object.values(r).join(",")).join("\n");
-    await Deno.writeTextFile(slipPath, header + body);
+  // 3. run schema fingerprint
+  const matchedTable = identifySchema(headers, config);
 
+  if (!matchedTable) {
     return {
-      delivery_slip: {
-        file_id: slipId,
-        rows: rows.length,
-        allowed_rows: limit,
-        note: "Result trimmed due to token limits.",
-      },
+      error:
+        "Schema identification failed: uploaded file headers do not strictly match any allowlist table.",
+      hint:
+        "Ensure the CSV headers are an exact subset of a configured table's safe_columns.",
     };
   }
 
+  // 4. pick the allowlist for that table
+  let allowedColumns: Record<string, { description: string }> | null = null;
+  for (const schemaObj of Object.values(config)) {
+    if (schemaObj[matchedTable]) {
+      allowedColumns = schemaObj[matchedTable].safe_columns;
+      break;
+    }
+  }
+  if (!allowedColumns) {
+    return {
+      error: "Internal error: matched table found but allowlist lookup failed.",
+    };
+  }
+
+  // 5. filter rows using the allowlist
   const cleaned = filterRows(rows, config.app_data.users.safe_columns);
 
   return {

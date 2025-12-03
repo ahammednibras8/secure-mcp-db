@@ -71,7 +71,7 @@ export function filterRows(
   return cleanRows;
 }
 
-export function identitySchema(
+export function identifySchema(
   headers: string[],
   config: AllowlistConfig,
 ): string | null {
