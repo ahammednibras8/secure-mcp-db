@@ -7,12 +7,12 @@ function getPool(): Pool {
   if (!pool) {
     pool = new Pool(
       {
-        database: Deno.env.get("DB_NAME"),
-        hostname: Deno.env.get("DB_HOST"),
+        database: Deno.env.get("DB_NAME") ?? "postgres",
+        hostname: Deno.env.get("DB_HOST") ?? "127.0.0.1",
         port: 5432,
 
         user: Deno.env.get("DB_USER") ?? "mcp_agent",
-        password: Deno.env.get("DB_PASSWORD"),
+        password: Deno.env.get("DB_PASSWORD") ?? "agent123",
       },
       10,
     );

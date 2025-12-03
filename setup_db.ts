@@ -12,8 +12,13 @@ await client.connect();
 
 try {
   console.log("🔥 Destroying old data...");
-  await client.queryArray`DROP ROLE IF EXISTS mcp_agent`;
   await client.queryArray`DROP SCHEMA IF EXISTS app_data CASCADE`;
+  try {
+    await client.queryArray`DROP OWNED BY mcp_agent CASCADE`;
+  } catch {
+    // Ignore if role doesn't exist
+  }
+  await client.queryArray`DROP ROLE IF EXISTS mcp_agent`;
 
   console.log("Building Schema...");
   await client.queryArray`CREATE SCHEMA app_data`;
@@ -35,6 +40,10 @@ try {
   // 3. Grant Access to the Tables (The File Key)
   await client
     .queryArray`GRANT SELECT ON ALL TABLES IN SCHEMA app_data TO mcp_agent`;
+
+  // 4. Set Search Path so "SELECT * FROM users" works (instead of app_data.users)
+  await client
+    .queryArray`ALTER ROLE mcp_agent SET search_path = app_data, public`;
 
   console.log("Database Provisioned Successfully!");
 } catch (e) {
