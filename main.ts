@@ -17,7 +17,7 @@ for (const [toolName, def] of Object.entries(tools)) {
       return {
         content: [
           {
-            type: "text",
+            type: "text" as const,
             text: JSON.stringify(result, null, 2),
           },
         ],

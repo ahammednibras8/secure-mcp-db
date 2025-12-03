@@ -14,4 +14,14 @@ const pool = new Pool(
   10,
 );
 
+export async function runDbQuery(sql: string) {
+  const client = await pool.connect();
+  try {
+    const result = await client.queryObject(sql);
+    return result.rows;
+  } finally {
+    client.release();
+  }
+}
+
 export default pool;

@@ -1,5 +1,6 @@
 import z from "zod";
 import { executeAnalysisQuery, validatedSQL } from "./middleware.ts";
+import { runDbQuery } from "./database.ts";
 
 // 1. ZOD SCHEMAS FOR TOOL INPUTS
 const analyzeArtifactInput = z.object({
@@ -11,12 +12,27 @@ const analyzeArtifactInput = z.object({
   ),
 });
 
+// read_query input schema
+const readQueryInput = z.object({
+  sql_query: z.string().min(1, "sql_query is required"),
+  justification: z.string().min(
+    20,
+    "ustification must explain why the agent needs this data",
+  ),
+});
+
 // 2. TOOL DEFINITIONS (MCP)
 export const tools = {
   analyze_artifact: {
     description:
       "Run a safe, AST-validated SQL query on a server-side artifact.",
     inputSchema: analyzeArtifactInput,
+  },
+
+  read_query: {
+    description:
+      "Safely execute a SELECT-only SQL query on the production PostgreSQL database",
+    inputSchema: readQueryInput,
   },
 };
 
@@ -48,6 +64,24 @@ export async function handleToolCall(toolName: string, args: unknown) {
         ok: true,
         analyzed: result,
       };
+    }
+
+    case "read_query": {
+      const parsed = readQueryInput.parse(args);
+      const { sql_query } = parsed;
+
+      const validation = await validatedSQL(sql_query);
+      if (!validation.ok) {
+        return {
+          error: validation.error,
+          hint: validation.hint,
+          category: "SQL_VALIDATION_ERROR",
+        };
+      }
+
+      const dbResult = await runDbQuery(sql_query);
+
+      return { ok: true, result: dbResult };
     }
 
     default:
