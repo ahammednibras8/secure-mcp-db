@@ -31,8 +31,9 @@ try {
 
   console.log("Creating Least-Privilege Identity...");
 
-  // 1. Create the user (Password is 'agent123')
-  await client.queryArray`CREATE USER mcp_agent WITH PASSWORD 'agent123'`;
+  // 1. Create the user (Password is 's3cur3_P@ssw0rd_99!')
+  await client
+    .queryArray`CREATE USER mcp_agent WITH PASSWORD 's3cur3_P@ssw0rd_99!'`;
 
   // 2. Grant Acces to the Schema
   await client.queryArray`GRANT USAGE ON SCHEMA app_data TO mcp_agent`;

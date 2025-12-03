@@ -3,16 +3,24 @@ import { computeDynamicRowLimit } from "./safety.ts";
 
 let pool: Pool | null = null;
 
+function getEnvOrThrow(key: string): string {
+  const value = Deno.env.get(key);
+  if (!value) {
+    throw new Error(`Missing environment variable: ${key}`);
+  }
+  return value;
+}
+
 function getPool(): Pool {
   if (!pool) {
     pool = new Pool(
       {
-        database: Deno.env.get("DB_NAME") ?? "postgres",
-        hostname: Deno.env.get("DB_HOST") ?? "127.0.0.1",
+        database: getEnvOrThrow("DB_NAME"),
+        hostname: getEnvOrThrow("DB_HOST"),
         port: 5432,
 
-        user: Deno.env.get("DB_USER") ?? "mcp_agent",
-        password: Deno.env.get("DB_PASSWORD") ?? "agent123",
+        user: getEnvOrThrow("DB_USER"),
+        password: getEnvOrThrow("DB_PASSWORD"),
       },
       10,
     );
