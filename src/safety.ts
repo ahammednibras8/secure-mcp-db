@@ -75,17 +75,23 @@ export function identifySchema(
   headers: string[],
   config: AllowlistConfig,
 ): string | null {
+  let bestTable: string | null = null;
+  let bestScore = 0;
+
   for (const [schemaName, tables] of Object.entries(config)) {
     for (const [tableName, tableDef] of Object.entries(tables)) {
       const allowedCols = Object.keys(tableDef.safe_columns);
 
-      const isStrictMatch = headers.every((h) => allowedCols.includes(h));
+      const score = headers.filter((h) => allowedCols.includes(h)).length;
 
-      if (isStrictMatch) {
-        return tableName;
+      if (score > bestScore) {
+        bestScore = score;
+        bestTable = tableName;
       }
     }
   }
 
-  return null;
+  if (bestScore === 0) return null;
+
+  return bestTable;
 }
