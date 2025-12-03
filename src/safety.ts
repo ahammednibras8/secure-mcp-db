@@ -49,3 +49,24 @@ export async function loadConfig(): Promise<AllowlistConfig> {
 
   return parsed.allowlist;
 }
+
+export function filterRows(
+  rawRows: Array<Record<string, any>>,
+  allowedColumns: Record<string, { description: string }>,
+) {
+  const cleanRows = [];
+
+  for (const row of rawRows) {
+    const clean: Record<string, any> = {};
+
+    for (const colName of Object.keys(allowedColumns)) {
+      if (colName in row) {
+        clean[colName] = row[colName];
+      }
+    }
+
+    cleanRows.push(clean);
+  }
+
+  return cleanRows;
+}

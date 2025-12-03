@@ -1,5 +1,8 @@
 import { parse } from "pgsql-ast-parser";
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
+import { filterRows, loadConfig } from "./safety.ts";
+
+const config = await loadConfig();
 
 const FORBIDDEN_KEYWORDS = [
   "INSERT",
@@ -186,8 +189,10 @@ export async function executeAnalysisQuery(params: {
     };
   }
 
+  const cleaned = filterRows(rows, config.app_data.users.safe_columns);
+
   return {
-    rows: rows.length,
-    data: rows,
+    rows: cleaned.length,
+    data: cleaned,
   };
 }

@@ -1,8 +1,5 @@
 import z from "zod";
-import { loadConfig } from "./safety.ts";
 import { executeAnalysisQuery, validatedSQL } from "./middleware.ts";
-
-const config = await loadConfig();
 
 // 1. ZOD SCHEMAS FOR TOOL INPUTS
 const analyzeArtifactInput = z.object({
