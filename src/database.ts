@@ -1,4 +1,5 @@
 import { Pool } from "https://deno.land/x/postgres@v0.19.5/mod.ts";
+import { computeDynamicRowLimit } from "./safety.ts";
 
 const pool = new Pool(
   {
@@ -18,7 +19,23 @@ export async function runDbQuery(sql: string) {
   const client = await pool.connect();
   try {
     const result = await client.queryObject(sql);
-    return result.rows;
+    const rows = result.rows as Array<Record<string, any>>;
+
+    if (rows.length === 0) return { rows: 0, data: [0] };
+
+    const sampleRow = rows[0];
+    const dynamicLimit = computeDynamicRowLimit(sampleRow);
+
+    if (rows.length > dynamicLimit) {
+      return {
+        error: "Result exceeds token-safe row limit",
+        rows_returned: rows.length,
+        allowed_rows: dynamicLimit,
+        hint: "Add a tighter LIMIT clause to your SQL query.",
+      };
+    }
+
+    return rows;
   } finally {
     client.release();
   }

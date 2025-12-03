@@ -45,7 +45,7 @@ export async function handleToolCall(toolName: string, args: unknown) {
       const { file_id, sql_query, justification } = parsed;
 
       // Step A: Validate SQL through AST Middleware
-      const validation = await validatedSQL(sql_query);
+      const validation = await validatedSQL(sql_query, "artifact");
 
       if (!validation.ok) {
         return {
@@ -70,7 +70,7 @@ export async function handleToolCall(toolName: string, args: unknown) {
       const parsed = readQueryInput.parse(args);
       const { sql_query } = parsed;
 
-      const validation = await validatedSQL(sql_query);
+      const validation = await validatedSQL(sql_query, "db");
       if (!validation.ok) {
         return {
           error: validation.error,

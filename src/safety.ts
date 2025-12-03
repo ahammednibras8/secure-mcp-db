@@ -95,3 +95,26 @@ export function identifySchema(
 
   return bestTable;
 }
+
+// TOKEN-AWARE SAFETY (dynamic row limit)
+function estimateTokensForRow(row: Record<string, any>): number {
+  let total = 0;
+
+  for (const value of Object.values(row)) {
+    if (value === null || value === undefined) continue;
+    const text = String(value);
+    total += Math.ceil(text.length / 4);
+  }
+  return total;
+}
+
+export function computeDynamicRowLimit(
+  sampleRow: Record<string, any>,
+  modelTokenLimit = 128_000,
+): number {
+  const tokensPerRow = estimateTokensForRow(sampleRow);
+  const reserved = Math.floor(modelTokenLimit * 0.20);
+  const available = modelTokenLimit - reserved;
+  const maxRows = Math.floor(available / tokensPerRow);
+  return Math.max(1, maxRows);
+}

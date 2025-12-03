@@ -1,6 +1,11 @@
 import { parse } from "pgsql-ast-parser";
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
-import { filterRows, identifySchema, loadConfig } from "./safety.ts";
+import {
+  computeDynamicRowLimit,
+  filterRows,
+  identifySchema,
+  loadConfig,
+} from "./safety.ts";
 
 const config = await loadConfig();
 
@@ -20,11 +25,15 @@ const FORBIDDEN_KEYWORDS = [
 ];
 
 // 1. SQL VALIDATION (AST + rule engine)
-export async function validatedSQL(sql: string): Promise<{
+export async function validatedSQL(
+  sql: string,
+  mode: "artifact" | "db",
+): Promise<{
   ok: boolean;
   error?: string;
   hint?: string;
 }> {
+  // 1. Forbidden keywords
   for (const word of FORBIDDEN_KEYWORDS) {
     if (sql.toUpperCase().includes(word)) {
       return {
@@ -35,6 +44,7 @@ export async function validatedSQL(sql: string): Promise<{
     }
   }
 
+  // 2. Parse AST
   let ast;
   try {
     ast = parse(sql);
@@ -56,15 +66,34 @@ export async function validatedSQL(sql: string): Promise<{
 
   const stmt = ast[0] as any;
 
-  const fromTable = (stmt.from?.[0] as any)?.name?.name;
-  if (fromTable !== "artifact") {
-    return {
-      ok: false,
-      error: "Query must reference only the 'artifact' table",
-      hint: "Remove references to other tables",
-    };
+  // ARTIFACT MODE RESTRICTIONS
+  if (mode === "artifact") {
+    const table = stmt.form?.[0]?.name?.name;
+    if (table !== "artifact") {
+      return {
+        ok: false,
+        error: "Artifact queries must reference only 'artifact'",
+        hint: "Remove references to other tables",
+      };
+    }
   }
 
+  // DB MODE
+  if (mode === "db") {
+    if (stmt.from && stmt.from?.[0]?.joins) {
+      for (const join of stmt.from[0].joins) {
+        if (!join.on) {
+          return {
+            ok: false,
+            error: "JOIN without ON clause",
+            hint: "Add an ON condition to every JOIN",
+          };
+        }
+      }
+    }
+  }
+
+  // Limit rule applies to BOTH modes
   const isAggregate =
     stmt.columns?.some((col: any) => col.expr?.type === "call") ??
       false;
@@ -77,50 +106,7 @@ export async function validatedSQL(sql: string): Promise<{
     };
   }
 
-  if (stmt.from && stmt.from.length > 1) {
-    return {
-      ok: false,
-      error: "Implicit JOINs are not allowed",
-      hint: "Use explicit JOIN ... ON syntax",
-    };
-  }
-
-  if ((stmt.from?.[0] as any)?.joins) {
-    for (const j of (stmt.from?.[0] as any).joins) {
-      if (!j.on) {
-        return {
-          ok: false,
-          error: "JOIN without ON clause",
-          hint: "Add ON to all JOIN statements",
-        };
-      }
-    }
-  }
-
   return { ok: true };
-}
-
-// 2. TOKEN-AWARE SAFETY (dynamic row limit)
-function estimateTokensForRow(row: Record<string, any>): number {
-  let total = 0;
-
-  for (const value of Object.values(row)) {
-    if (value === null || value === undefined) continue;
-    const text = String(value);
-    total += Math.ceil(text.length / 4);
-  }
-  return total;
-}
-
-function computeDynamicRowLimit(
-  sampleRow: Record<string, any>,
-  modelTokenLimit = 128_000,
-): number {
-  const tokensPerRow = estimateTokensForRow(sampleRow);
-  const reserved = Math.floor(modelTokenLimit * 0.20);
-  const available = modelTokenLimit - reserved;
-  const maxRows = Math.floor(available / tokensPerRow);
-  return Math.max(1, maxRows);
 }
 
 // 3. CSV into SQLite Loader
@@ -207,7 +193,31 @@ export async function executeAnalysisQuery(params: {
     };
   }
 
-  // 5. filter rows using the allowlist
+  // 5. Token-aware row safety
+  const sampleRow = rows[0];
+  const dynamicLimit = computeDynamicRowLimit(sampleRow);
+
+  if (rows.length > dynamicLimit) {
+    const slipId = `result_${crypto.randomUUID()}.csv`;
+    const slipPath = `/tmp/artifacts/${slipId}`;
+
+    const header = Object.keys(rows[0]).join(",") + "\n";
+    const body = rows.map((r) => Object.values(r).join(",")).join("\n");
+
+    await Deno.writeTextFile(slipPath, header + body);
+
+    return {
+      delivery_slip: {
+        file_id: slipId,
+        rows: rows.length,
+        allowed_rows: dynamicLimit,
+        note:
+          "Result too large to send safely. Use analyze_artifact on the slip.",
+      },
+    };
+  }
+
+  // 6. filter rows using the allowlist
   const cleaned = filterRows(rows, allowedColumns);
 
   return {
