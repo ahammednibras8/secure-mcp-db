@@ -1,5 +1,9 @@
 import z from "zod";
-import { executeAnalysisQuery, validatedSQL } from "./middleware.ts";
+import {
+  executeAnalysisQuery,
+  executeSafeDbQuery,
+  validatedSQL,
+} from "./middleware.ts";
 import { runDbQuery } from "./database.ts";
 
 // 1. ZOD SCHEMAS FOR TOOL INPUTS
@@ -79,7 +83,7 @@ export async function handleToolCall(toolName: string, args: unknown) {
         };
       }
 
-      const dbResult = await runDbQuery(sql_query);
+      const dbResult = await executeSafeDbQuery(sql_query);
 
       return { ok: true, result: dbResult };
     }

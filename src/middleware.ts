@@ -6,6 +6,7 @@ import {
   identifySchema,
   loadConfig,
 } from "./safety.ts";
+import { runDbQuery } from "./database.ts";
 
 const config = await loadConfig();
 
@@ -232,6 +233,68 @@ export async function executeAnalysisQuery(params: {
   }
 
   // 6. filter rows using the allowlist
+  const cleaned = filterRows(rows, allowedColumns);
+
+  return {
+    rows: cleaned.length,
+    data: cleaned,
+  };
+}
+
+export async function executeSafeDbQuery(sql_query: string) {
+  // 1. Parse AST to extract table name
+  const ast = parse(sql_query);
+  const stmt = ast[0] as any;
+
+  const tableName = stmt.from?.[0]?.name?.name?.toLowerCase();
+
+  if (!tableName) {
+    return {
+      error: "Unable to determine target table from query",
+      hint: "Ensure your query uses a FROM clause",
+    };
+  }
+
+  // 2. Find allowed columens for this table
+  let allowedColumns: Record<string, { description: string }> | null = null;
+
+  for (const schemaObj of Object.values(config)) {
+    if (schemaObj[tableName]) {
+      allowedColumns = schemaObj[tableName].safe_columns;
+      break;
+    }
+  }
+
+  if (!allowedColumns) {
+    return {
+      error:
+        `Table '${tableName}' is allowed to query but not configured for output sanitization.`,
+      hint: "Add this table to config.yaml",
+    };
+  }
+
+  // 3. Run the database query
+  const rows = await runDbQuery(sql_query);
+
+  if ("error" in rows) {
+    return rows;
+  }
+
+  if (rows.length === 0) return { rows: 0, data: [] };
+
+  // 4. Token-Aware row safety
+  const sampleRow = rows[0];
+  const dynamicLimit = computeDynamicRowLimit(sampleRow);
+
+  if (rows.length > dynamicLimit) {
+    return {
+      error: "Result too large to send safely",
+      rows_returned: rows.length,
+      allowed_rows: dynamicLimit,
+      hint: "Add LIMIT to your SQL query.",
+    };
+  }
+
   const cleaned = filterRows(rows, allowedColumns);
 
   return {
