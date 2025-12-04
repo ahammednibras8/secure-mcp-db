@@ -30,6 +30,9 @@ function getPool(): Pool {
 
 export async function runDbQuery(sql: string) {
   const client = await getPool().connect();
+
+  await client.queryArray`SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`;
+
   try {
     const result = await client.queryObject(sql);
     const rows = (result.rows as Array<Record<string, any>>) ?? [];
