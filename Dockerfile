@@ -9,4 +9,4 @@ COPY src ./src
 
 RUN deno cache main.ts
 
-CMD [ "deno", "run", "--allow-net", "--allow-read=./config.yaml,/tmp/artifacts,.env.local", "--allow-write=/tmp/artifacts", "--allow-env", "main.ts"]
+CMD [ "deno", "run", "--allow-net", "--allow-read=./config.yaml,/tmp/artifacts,.env.local,.env.defaults", "--allow-write=/tmp/artifacts,./audit.log", "--allow-env", "main.ts"]

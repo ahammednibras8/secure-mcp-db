@@ -93,10 +93,14 @@ Deno.
 
 #### Option A: Docker (Recommended)
 
-**Method 1: Pull from GitHub Container Registry**
+**Method 1: Download & Run (Pre-built)** Use the MCP Inspector to run and test
+the server instantly:
 
 ```bash
-docker run -i --rm \
+npx @modelcontextprotocol/inspector \
+  docker run \
+  -i \
+  --rm \
   -e DB_HOST=host.docker.internal \
   -e DB_NAME=postgres \
   -e DB_USER=mcp_agent \
@@ -104,16 +108,20 @@ docker run -i --rm \
   ghcr.io/ahammednibras8/secure-mcp-db:latest
 ```
 
-**Method 2: Build Manually**
+**Method 2: Clone, Build & Run (Manual)** If you want to modify the code:
 
 ```bash
-docker build -t secure-mcp-db .
-docker run -i --rm \
+docker build -t secure-mcp .
+
+npx @modelcontextprotocol/inspector \
+  docker run \
+  -i \
+  --rm \
   -e DB_HOST=host.docker.internal \
   -e DB_NAME=postgres \
   -e DB_USER=mcp_agent \
   -e DB_PASSWORD=your_secure_password \
-  secure-mcp-db
+  secure-mcp
 ```
 
 #### Option B: Local Development (Deno)
