@@ -4,7 +4,7 @@ import {
   executeSafeDbQuery,
   validatedSQL,
 } from "./middleware.ts";
-import { runDbQuery } from "./database.ts";
+import { logAudit } from "./audit.ts";
 
 // 1. ZOD SCHEMAS FOR TOOL INPUTS
 const analyzeArtifactInput = z.object({
@@ -48,6 +48,13 @@ export async function handleToolCall(toolName: string, args: unknown) {
 
       const { file_id, sql_query, justification } = parsed;
 
+      logAudit({
+        actor_id: "mcp_agent",
+        action: "analyze_artifact",
+        target: file_id,
+        justification,
+      });
+
       // Step A: Validate SQL through AST Middleware
       const validation = await validatedSQL(sql_query, "artifact");
 
@@ -72,7 +79,14 @@ export async function handleToolCall(toolName: string, args: unknown) {
 
     case "read_query": {
       const parsed = readQueryInput.parse(args);
-      const { sql_query } = parsed;
+      const { sql_query, justification } = parsed;
+
+      logAudit({
+        actor_id: "mcp_agent",
+        action: "read_query",
+        target: sql_query,
+        justification,
+      });
 
       const validation = await validatedSQL(sql_query, "db");
       if (!validation.ok) {
