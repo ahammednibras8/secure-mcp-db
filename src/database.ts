@@ -28,15 +28,42 @@ function getPool(): Pool {
   return pool;
 }
 
+// Helper to handle BigInt serialization
+function serializeBigInt(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+  if (typeof obj === "bigint") {
+    return obj.toString();
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(serializeBigInt);
+  }
+  if (typeof obj === "object") {
+    const newObj: any = {};
+    for (const key in obj) {
+      newObj[key] = serializeBigInt(obj[key]);
+    }
+    return newObj;
+  }
+  return obj;
+}
+
 export async function runDbQuery(sql: string) {
   const client = await getPool().connect();
+
+  await client.queryArray`SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`;
+
   try {
     const result = await client.queryObject(sql);
-    const rows = (result.rows as Array<Record<string, any>>) ?? [];
+    const rawRows = (result.rows as Array<Record<string, any>>) ?? [];
 
-    if (rows.length === 0) {
+    if (rawRows.length === 0) {
       return { rows: [] };
     }
+
+    // Serialize BigInts before any processing
+    const rows = serializeBigInt(rawRows);
 
     const sampleRow = rows[0];
     const dynamicLimit = computeDynamicRowLimit(sampleRow);

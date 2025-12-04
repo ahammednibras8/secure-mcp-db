@@ -55,12 +55,23 @@ export function filterRows(
   allowedColumns: Record<string, { description: string }>,
 ) {
   const cleanRows = [];
+  // Allow common aggregate function names
+  const SAFE_AGGREGATES = [
+    "count",
+    "sum",
+    "avg",
+    "min",
+    "max",
+    "total",
+    "total_revenue",
+  ];
 
   for (const row of rawRows) {
     const clean: Record<string, any> = {};
 
-    for (const colName of Object.keys(allowedColumns)) {
-      if (colName in row) {
+    for (const colName of Object.keys(row)) {
+      // Allow if explicitly in allowlist OR if it's a safe aggregate
+      if (colName in allowedColumns || SAFE_AGGREGATES.includes(colName)) {
         clean[colName] = row[colName];
       }
     }
