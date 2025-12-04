@@ -249,30 +249,49 @@ export async function executeSafeDbQuery(sql_query: string) {
   }
 
   const stmt = ast[0] as any;
-  const tableNameRaw = stmt.from?.[0]?.name?.name;
+  const tablesToCheck: string[] = [];
 
-  if (!tableNameRaw) {
+  // 1. Get primary table
+  const tableNameRaw = stmt.from?.[0]?.name?.name;
+  if (tableNameRaw) {
+    tablesToCheck.push(String(tableNameRaw).toLowerCase());
+  }
+
+  // 2. Get JOINed tables
+  if (stmt.from?.[0]?.joins) {
+    for (const join of stmt.from[0].joins) {
+      const joinName = join.name?.name;
+      if (joinName) {
+        tablesToCheck.push(String(joinName).toLowerCase());
+      }
+    }
+  }
+
+  if (tablesToCheck.length === 0) {
     return {
       error: "Unable to determine target table from query",
-      hint:
-        "Ensure your query uses a FROM clause with a single table (e.g. FROM users).",
+      hint: "Ensure your query uses a FROM clause.",
     };
   }
 
-  const tableName = String(tableNameRaw).toLowerCase();
+  // 3. Merge allowlists from ALL tables
+  let allowedColumns: Record<string, { description: string }> = {};
+  let foundConfig = false;
 
-  // 2. Find allowed columens for this table
-  let allowedColumns: Record<string, { description: string }> | null = null;
-  if (config.app_data && config.app_data[tableName]) {
-    allowedColumns = config.app_data[tableName].safe_columns;
+  for (const table of tablesToCheck) {
+    if (config.app_data && config.app_data[table]) {
+      foundConfig = true;
+      allowedColumns = {
+        ...allowedColumns,
+        ...config.app_data[table].safe_columns,
+      };
+    }
   }
 
-  if (!allowedColumns) {
+  if (!foundConfig) {
     return {
-      error:
-        `Table '${tableName}' is allowed to query but not configured for output sanitization.`,
-      hint:
-        "Add this table and its safe_columns to config.yaml under allowlist.app_data.",
+      error: `No allowlist found for tables: ${tablesToCheck.join(", ")}`,
+      hint: "Add these tables to config.yaml under allowlist.app_data.",
     };
   }
 

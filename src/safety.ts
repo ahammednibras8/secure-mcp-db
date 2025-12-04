@@ -56,7 +56,15 @@ export function filterRows(
 ) {
   const cleanRows = [];
   // Allow common aggregate function names
-  const SAFE_AGGREGATES = ["count", "sum", "avg", "min", "max", "total"];
+  const SAFE_AGGREGATES = [
+    "count",
+    "sum",
+    "avg",
+    "min",
+    "max",
+    "total",
+    "total_revenue",
+  ];
 
   for (const row of rawRows) {
     const clean: Record<string, any> = {};
