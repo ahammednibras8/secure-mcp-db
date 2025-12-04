@@ -88,11 +88,41 @@ deno run --allow-net --allow-env setup_db.ts
 
 ### 2. Run the Server
 
+You have two options: running via Docker (recommended) or running locally with
+Deno.
+
+#### Option A: Docker (Recommended)
+
+**Method 1: Pull from GitHub Container Registry**
+
+```bash
+docker run -i --rm \
+  -e DB_HOST=host.docker.internal \
+  -e DB_NAME=postgres \
+  -e DB_USER=mcp_agent \
+  -e DB_PASSWORD=your_secure_password \
+  ghcr.io/ahammednibras8/secure-mcp-db:latest
+```
+
+**Method 2: Build Manually**
+
+```bash
+docker build -t secure-mcp-db .
+docker run -i --rm \
+  -e DB_HOST=host.docker.internal \
+  -e DB_NAME=postgres \
+  -e DB_USER=mcp_agent \
+  -e DB_PASSWORD=your_secure_password \
+  secure-mcp-db
+```
+
+#### Option B: Local Development (Deno)
+
 ```bash
 deno run --allow-net --allow-read --allow-env main.ts
 ```
 
-### 3. Test with an Agent
+### 4. Test with an Agent
 
 Connect any MCP-compatible client (like Claude Desktop) to the server. Try
 asking it to:
@@ -102,7 +132,4 @@ asking it to:
 
 ---
 
-## 📝 License
-
-MIT License. Feel free to use this code as a reference for your own secure MCP
-implementations.
+> **Thanks from [Ahammed Nibras](https://github.com/ahammednibras8)** 🚀
