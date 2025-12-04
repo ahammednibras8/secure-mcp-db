@@ -3,9 +3,9 @@ allowlist:
     users:
       safe_columns:
         id:
-          description: "Unique identifier for the user."
-        username:
-          description: "Public-facing username chosen by the user."
+          description: "Unique anonymized identifier for the user."
+        loyalty_tier:
+          description: "Marketing segment (e.g. Bronze, Silver, Gold, Platinum)."
 
     products:
       safe_columns:
@@ -15,3 +15,29 @@ allowlist:
           description: "Public-facing product name."
         price:
           description: "Public sale price visible to customers."
+
+    orders:
+      safe_columns:
+        id:
+          description: "Order ID."
+        customer_id:
+          description: "Pseudonymous reference to a customer (no PII)."
+        status:
+          description: "Processing state of the order (paid, shipped, delivered, refunded)."
+        created_at:
+          description: "Timestamp the order was placed."
+        total_amount:
+          description: "Visible order total (safe financial aggregate)."
+
+    order_items:
+      safe_columns:
+        id:
+          description: "Order item ID."
+        order_id:
+          description: "Reference to parent order."
+        product_id:
+          description: "Reference to purchased product."
+        quantity:
+          description: "Number of units purchased."
+        unit_price:
+          description: "Public per-unit sale price."

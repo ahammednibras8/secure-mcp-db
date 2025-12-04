@@ -810,7 +810,9 @@
     "https://deno.land/x/sqlite@v3.9.1/src/error.ts": "f7a15cb00d7c3797da1aefee3cf86d23e0ae92e73f0ba3165496c3816ab9503a",
     "https://deno.land/x/sqlite@v3.9.1/src/function.ts": "bc778cab7a6d771f690afa27264c524d22fcb96f1bb61959ade7922c15a4ab8d",
     "https://deno.land/x/sqlite@v3.9.1/src/query.ts": "d58abda928f6582d77bad685ecf551b1be8a15e8e38403e293ec38522e030cad",
-    "https://deno.land/x/sqlite@v3.9.1/src/wasm.ts": "e79d0baa6e42423257fb3c7cc98091c54399254867e0f34a09b5bdef37bd9487"
+    "https://deno.land/x/sqlite@v3.9.1/src/wasm.ts": "e79d0baa6e42423257fb3c7cc98091c54399254867e0f34a09b5bdef37bd9487",
+    "https://esm.sh/@faker-js/faker@8.0.2": "a1d6bd885a86aee85f69b465eff55a0d9c0f6de78cc031ca931c39213888c32e",
+    "https://esm.sh/@faker-js/faker@8.0.2/denonext/faker.mjs": "fda3c477a91f898de01decb7b0a52666f964c596d24614b2efcc74afa24a4b35"
   },
   "workspace": {
     "dependencies": [
