@@ -8,23 +8,9 @@ import {
 } from "./safety.ts";
 import { runDbQuery } from "./database.ts";
 import { parseSql, PgAst } from "./warm_parser.ts";
+import { extractAllTableNames } from "./ast_utils.ts";
 
 const config = await loadConfig();
-
-const FORBIDDEN_KEYWORDS = [
-  "INSERT",
-  "UPDATE",
-  "DELETE",
-  "DROP",
-  "ALTER",
-  "TRUNCATE",
-  "ATTACH",
-  "COPY",
-  "VACUUM",
-  "ANALYZE",
-  "GRANT",
-  "REINDEX",
-];
 
 // 1. SQL VALIDATION (AST + rule engine)
 export async function validatedSQL(
@@ -48,7 +34,7 @@ export async function validatedSQL(
   }
 
   // 2. Multi-Statement Injection Check
-  if (ast.stmts.length !== 1) {
+  if (!ast || !Array.isArray(ast.stmts) || ast.stmts.length !== 1) {
     return {
       ok: false,
       error: "Batch queries are not allowed",
@@ -60,7 +46,7 @@ export async function validatedSQL(
 
   // 3. Strict SELECT-only Enforcement
   // libpg_query wraps everything in an object key like { SelectStmt: ... }
-  if (!rawStmt.SelectStmt) {
+  if (!rawStmt || !rawStmt.SelectStmt) {
     const detectedType = Object.keys(rawStmt)[0];
     return {
       ok: false,
@@ -69,12 +55,23 @@ export async function validatedSQL(
     };
   }
 
-  const stmt = rawStmt.SelectStmt;
+  const selectStmt = rawStmt.SelectStmt;
+
+  // 4. Extract all referenced table names (deep)
+  let tables: string[] = [];
+  try {
+    tables = extractAllTableNames(selectStmt);
+  } catch (e) {
+    return {
+      ok: false,
+      error: "Failed to extract table names from AST",
+      hint: String(e),
+    };
+  }
 
   // ARTIFACT MODE
   if (mode === "artifact") {
     // Traverse fromClause to check table names
-    const tables = extractTableNames(stmt);
     for (const t of tables) {
       if (t !== "artifact") {
         return {
@@ -88,9 +85,7 @@ export async function validatedSQL(
 
   // DB MODE
   if (mode === "db") {
-    const tables = extractTableNames(stmt);
-    const allowedTables = Object.keys(config.app_data);
-
+    const allowedTables = Object.keys(config.app_data || {});
     for (const t of tables) {
       if (!allowedTables.includes(t)) {
         return {
@@ -102,41 +97,32 @@ export async function validatedSQL(
     }
   }
 
-  // LIMIT Check
-  if (!stmt.limitCount && !stmt.limitOffset) {
-    const isAggregate = checkForAggregates(stmt);
-    if (!isAggregate) {
-      return {
-        ok: false,
-        error: "Query must include a LIMIT clause",
-        hint: "Add LIMIT 100 or similar",
-      };
-    }
+  // 5. Enforce LIMIT unless aggregate-only
+  const isAggregate = checkForAggregates(selectStmt);
+  const hasLimit = Boolean(selectStmt.limitCount || selectStmt.limitOffset);
+  if (!isAggregate && !hasLimit) {
+    return {
+      ok: false,
+      error: "Query must include a LIMIT clause",
+      hint: "Add LIMIT 100 or similar",
+    };
   }
 
   return { ok: true };
-}
-
-// Helper: Extract all table names recursively (Handling JOINs, Subqueries is harder, but basic FROM is here)
-function extractTableNames(selectStmt: any): string[] {
-  const tables: string[] = [];
-
-  if (!selectStmt.fromClause) return [];
-
-  for (const item of selectStmt.fromClause) {
-    if (item.RangeVar) {
-      tables.push(item.RangeVar.relname);
-    }
-  }
-
-  return tables;
 }
 
 function checkForAggregates(selectStmt: any): boolean {
   const targets = selectStmt.targetList || [];
   for (const t of targets) {
     const val = t.ResTarget?.val;
+    if (!val) continue;
+
     if (val?.FuncCall) return true;
+
+    if (t.ResTarget?.name) {
+      const n = String(t.ResTarget.name).toLowerCase();
+      if (["count", "sum", "avg", "min", "max"].includes(n)) return true;
+    }
   }
 
   return false;
@@ -261,30 +247,34 @@ export async function executeAnalysisQuery(params: {
 
 export async function executeSafeDbQuery(sql_query: string) {
   // 1. Parse AST to extract table name
-  let ast;
+  let ast: PgAst;
   try {
-    ast = parse(sql_query);
+    ast = parseSql(sql_query);
   } catch (e) {
     return { error: "Invalid SQL syntax", hint: String(e) };
   }
 
-  const stmt = ast[0] as any;
-  const tablesToCheck: string[] = [];
-
-  // 1. Get primary table
-  const tableNameRaw = stmt.from?.[0]?.name?.name;
-  if (tableNameRaw) {
-    tablesToCheck.push(String(tableNameRaw).toLowerCase());
+  if (!ast || !Array.isArray(ast.stmts) || ast.stmts.length !== 1) {
+    return {
+      error: "Batch/multi-statement queries are not allowed",
+      hint: "Execute one statement at a time",
+    };
   }
 
-  // 2. Get JOINed tables
-  if (stmt.from?.[0]?.joins) {
-    for (const join of stmt.from[0].joins) {
-      const joinName = join.name?.name;
-      if (joinName) {
-        tablesToCheck.push(String(joinName).toLowerCase());
-      }
-    }
+  const rawStmt = ast.stmts[0].stmt;
+  if (!rawStmt || !rawStmt.SelectStmt) {
+    const detectedType = rawStmt ? Object.keys(rawStmt)[0] : "unknown";
+    return { error: `Forbidden statement type: ${detectedType}` };
+  }
+
+  const selectStmt = rawStmt.SelectStmt;
+
+  // 2. Deeply extract all referenced tables
+  let tablesToCheck: string[] = [];
+  try {
+    tablesToCheck = extractAllTableNames(selectStmt);
+  } catch (e) {
+    return { error: "Failed to extract table names", hint: String(e) };
   }
 
   if (tablesToCheck.length === 0) {
@@ -315,7 +305,7 @@ export async function executeSafeDbQuery(sql_query: string) {
     };
   }
 
-  // 3. Run the database query
+  // 4. Run the database query
   const dbResult = await runDbQuery(sql_query);
 
   if ("error" in dbResult) {
@@ -328,7 +318,7 @@ export async function executeSafeDbQuery(sql_query: string) {
     return { rows: 0, data: [] };
   }
 
-  // 4. Token-Aware row safety
+  // 5. Token-Aware row safety
   const sampleRow = rows[0];
   const dynamicLimit = computeDynamicRowLimit(sampleRow);
 

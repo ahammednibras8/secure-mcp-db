@@ -9,7 +9,7 @@ const freeResult = Module._free_result;
 
 export interface PgAst {
   version: number;
-  stmt: Array<{
+  stmts: Array<{
     stmt: Record<string, any>;
     stmt_len?: number;
   }>;
