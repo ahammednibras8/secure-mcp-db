@@ -1,2 +1,24 @@
 .vscode
 .env.local
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Build Tools & Environment
+emsdk/
+
+# Intermediate Build Files (C/C++ objects)
+*.o
+
+# Note: We keep "vendor/libpg_query" because it is a git submodule (a pointer), 
+# not the actual code files, so it is lightweight and necessary for the build source.
+
+# Note: We keep "parser.mjs" and "parser.wasm" because installing the Emscripten SDK (emsdk) 
+# on every machine/CI is difficult. Committing these allowing the app to run immediately.
