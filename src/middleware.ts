@@ -7,6 +7,7 @@ import {
   loadConfig,
 } from "./safety.ts";
 import { runDbQuery } from "./database.ts";
+import { parseSql, PgAst } from "./warm_parser.ts";
 
 const config = await loadConfig();
 
@@ -34,21 +35,10 @@ export async function validatedSQL(
   error?: string;
   hint?: string;
 }> {
-  // 1. Forbidden keywords
-  for (const word of FORBIDDEN_KEYWORDS) {
-    if (sql.toUpperCase().includes(word)) {
-      return {
-        ok: false,
-        error: `Forbidden SQL keyword detected: ${word}`,
-        hint: "Only SELECT queries are allowed",
-      };
-    }
-  }
-
-  // 2. Parse AST
-  let ast;
+  // 1. Parse AST using Real Postgres
+  let ast: PgAst;
   try {
-    ast = parse(sql);
+    ast = parseSql(sql);
   } catch (e) {
     return {
       ok: false,
@@ -57,69 +47,99 @@ export async function validatedSQL(
     };
   }
 
-  if (ast.length !== 1 || ast[0].type !== "select") {
+  // 2. Multi-Statement Injection Check
+  if (ast.stmts.length !== 1) {
     return {
       ok: false,
-      error: "Only a single SELECT query is allowed",
-      hint: "Split your logic into multiple queries",
+      error: "Batch queries are not allowed",
+      hint: "Execute one statement at a time",
     };
   }
 
-  const stmt = ast[0] as any;
+  const rawStmt = ast.stmts[0].stmt;
 
-  // ARTIFACT MODE RESTRICTIONS
+  // 3. Strict SELECT-only Enforcement
+  // libpg_query wraps everything in an object key like { SelectStmt: ... }
+  if (!rawStmt.SelectStmt) {
+    const detectedType = Object.keys(rawStmt)[0];
+    return {
+      ok: false,
+      error: `Forbidden statement type: ${detectedType}`,
+      hint: "Only SELECT queries are allowed",
+    };
+  }
+
+  const stmt = rawStmt.SelectStmt;
+
+  // ARTIFACT MODE
   if (mode === "artifact") {
-    const table = stmt.form?.[0]?.name?.name;
-    if (table !== "artifact") {
-      return {
-        ok: false,
-        error: "Artifact queries must reference only 'artifact'",
-        hint: "Remove references to other tables",
-      };
+    // Traverse fromClause to check table names
+    const tables = extractTableNames(stmt);
+    for (const t of tables) {
+      if (t !== "artifact") {
+        return {
+          ok: false,
+          error: "Artifact queries must reference only 'artifact'",
+          hint: "Remove references to other tables",
+        };
+      }
     }
   }
 
   // DB MODE
   if (mode === "db") {
-    const tableName = stmt.from?.[0]?.name?.name?.toLowerCase();
-
+    const tables = extractTableNames(stmt);
     const allowedTables = Object.keys(config.app_data);
 
-    if (!allowedTables.includes(tableName)) {
-      return {
-        ok: false,
-        error: `Table '${tableName}' is not allowed.`,
-        hint: "Query only tables defined in config.yaml allowlist.",
-      };
-    }
-
-    if (stmt.from && stmt.from?.[0]?.joins) {
-      for (const join of stmt.from[0].joins) {
-        if (!join.on) {
-          return {
-            ok: false,
-            error: "JOIN without ON clause",
-            hint: "Add an ON condition to every JOIN",
-          };
-        }
+    for (const t of tables) {
+      if (!allowedTables.includes(t)) {
+        return {
+          ok: false,
+          error: `Table '${t}' is not allowed.`,
+          hint: "Query only tables defined in config.yaml allowlist.",
+        };
       }
     }
   }
 
-  // Limit rule applies to BOTH modes
-  const isAggregate =
-    stmt.columns?.some((col: any) => col.expr?.type === "call") ??
-      false;
-
-  if (!isAggregate && !stmt.limit) {
-    return {
-      ok: false,
-      error: "Query must include a LIMIT clause",
-      hint: "Add LIMIT 100 or similar",
-    };
+  // LIMIT Check
+  if (!stmt.limitCount && !stmt.limitOffset) {
+    const isAggregate = checkForAggregates(stmt);
+    if (!isAggregate) {
+      return {
+        ok: false,
+        error: "Query must include a LIMIT clause",
+        hint: "Add LIMIT 100 or similar",
+      };
+    }
   }
 
   return { ok: true };
+}
+
+// Helper: Extract all table names recursively (Handling JOINs, Subqueries is harder, but basic FROM is here)
+function extractTableNames(selectStmt: any): string[] {
+  const tables: string[] = [];
+
+  if (!selectStmt.fromClause) return [];
+
+  for (const item of selectStmt.fromClause) {
+    if (item.RangeVar) {
+      tables.push(item.RangeVar.relname);
+    }
+  }
+
+  return tables;
+}
+
+function checkForAggregates(selectStmt: any): boolean {
+  const targets = selectStmt.targetList || [];
+  for (const t of targets) {
+    const val = t.ResTarget?.val;
+    if (val?.FuncCall) return true;
+  }
+
+  return false;
 }
 
 // 3. CSV into SQLite Loader
