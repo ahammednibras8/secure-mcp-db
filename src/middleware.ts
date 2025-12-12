@@ -1,4 +1,3 @@
-import { parse } from "pgsql-ast-parser";
 import { DB } from "https://deno.land/x/sqlite/mod.ts";
 import {
   computeDynamicRowLimit,

@@ -22,3 +22,5 @@ emsdk/
 
 # Note: We keep "parser.mjs" and "parser.wasm" because installing the Emscripten SDK (emsdk) 
 # on every machine/CI is difficult. Committing these allowing the app to run immediately.
+
+audit.log
