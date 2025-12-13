@@ -1,4 +1,9 @@
 import z from "zod";
+
+// Redirect all console.log to stderr to protect JSON-RPC on stdout
+const originalLog = console.log;
+console.log = console.error;
+
 import {
   executeAnalysisQuery,
   executeSafeDbQuery,

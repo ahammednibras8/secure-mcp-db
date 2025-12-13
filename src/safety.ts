@@ -64,6 +64,7 @@ export function filterRows(
     "max",
     "total",
     "total_revenue",
+    "total_orders",
   ];
 
   for (const row of rawRows) {
