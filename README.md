@@ -23,10 +23,14 @@ pool.
 
 ### The Security Pipeline
 
-1. **AST Parsing (Abstract Syntax Tree):** We don't use Regex. We parse the raw
-   SQL into an AST using `pgsql-ast-parser`. If the AST reveals _any_ mutation
-   (`INSERT`, `UPDATE`, `DROP`, `GRANT`), the query is rejected instantly. The
-   database never even sees it.
+1. **WASM-Powered AST Parsing:** We don't use Regex, and we don't use partial JS
+   parsers. We compiled PostgreSQL's actual parser source code (`libpg_query`)
+   to WebAssembly.
+
+   We don't "guess" if a query is safe; we traverse the exact same syntax tree
+   the database uses. If the AST reveals _any_ mutation (`INSERT`, `DROP`,
+   `GRANT`), or accesses a non-allowlisted table (even inside a CTE or
+   subquery), the request is killed instantly.
 
 2. **Schema Allowlisting (The "Need-to-Know" Principle):** The agent does not
    have `SELECT *` permissions.
@@ -76,6 +80,10 @@ Let's be honest about the engineering costs of this approach:
    necessary one.
 4. **Zero Trust is Hard:** You will find yourself fighting the middleware. "Why
    can't I query this?" Because you didn't allowlist it. Security is friction.
+5. **Build Complexity:** We are running C code in Deno. Ensuring `libpg_query`
+   compiles correctly via Emscripten and links to the Deno runtime was a
+   non-trivial engineering challenge. But it ensures our parser behavior is 1:1
+   identical to the database.
 
 ---
 
