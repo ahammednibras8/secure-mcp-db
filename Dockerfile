@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY deno.json deno.lock ./
 COPY config.yaml ./
+COPY parser.mjs parser.wasm ./
 COPY main.ts ./
 COPY src ./src
 
