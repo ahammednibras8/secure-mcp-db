@@ -26,11 +26,22 @@ export function extractAllTableNames(node: any): string[] {
         return;
       }
 
-      if (rv.relname) {
-        tables.add(rv.relname);
-      } else {
-        console.warn(`[Security Warning] RangeVar missing relname at ${path}`);
+      const { schemaname, relname } = rv;
+
+      if (!relname) {
+        console.warn(`[Security] RangeVar missing relname at ${path}`);
+        return;
       }
+
+      if (!schemaname) {
+        throw new Error(
+          `Unqualified table reference detected: "${relname}". ` +
+            `Fully qualified schema.table is required.`,
+        );
+      }
+
+      const fqdn = `${schemaname}.${relname}`.toLowerCase();
+      tables.add(fqdn);
     }
 
     // 4. Generic Recursion: Check every key in the object

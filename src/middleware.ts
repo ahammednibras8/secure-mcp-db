@@ -84,13 +84,22 @@ export async function validatedSQL(
 
   // DB MODE
   if (mode === "db") {
-    const allowedTables = Object.keys(config.app_data || {});
+    // Flatten config into allowed FQDNs (schema.table)
+    const allowedFQDNs = new Set<string>();
+    for (const [schemaName, tables] of Object.entries(config)) {
+      if (!tables) continue;
+      for (const tableName of Object.keys(tables)) {
+        allowedFQDNs.add(`${schemaName}.${tableName}`.toLowerCase());
+      }
+    }
+
     for (const t of tables) {
-      if (!allowedTables.includes(t)) {
+      if (!allowedFQDNs.has(t)) {
         return {
           ok: false,
           error: `Table '${t}' is not allowed.`,
-          hint: "Query only tables defined in config.yaml allowlist.",
+          hint:
+            "Query only tables defined in config.yaml allowlist (must use schema.table).",
         };
       }
     }
@@ -283,16 +292,22 @@ export async function executeSafeDbQuery(sql_query: string) {
     };
   }
 
-  // 3. Merge allowlists from ALL tables
+  // 3. Merge allowlists from ALL tables (Using FQDNs)
   let allowedColumns: Record<string, { description: string }> = {};
   let foundConfig = false;
 
-  for (const table of tablesToCheck) {
-    if (config.app_data && config.app_data[table]) {
+  for (const fqdn of tablesToCheck) {
+    const parts = fqdn.split(".");
+    // In strict mode, strict FQDN is guarded by ast_utils, but let's be safe
+    if (parts.length !== 2) continue;
+
+    const [schema, table] = parts;
+
+    if (config[schema] && config[schema][table]) {
       foundConfig = true;
       allowedColumns = {
         ...allowedColumns,
-        ...config.app_data[table].safe_columns,
+        ...config[schema][table].safe_columns,
       };
     }
   }
@@ -300,7 +315,8 @@ export async function executeSafeDbQuery(sql_query: string) {
   if (!foundConfig) {
     return {
       error: `No allowlist found for tables: ${tablesToCheck.join(", ")}`,
-      hint: "Add these tables to config.yaml under allowlist.app_data.",
+      hint:
+        "Add these tables to config.yaml under allowlist (e.g. schema.table).",
     };
   }
 

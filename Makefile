@@ -58,6 +58,11 @@ build-wasm:
 		&& sed -i '' 's/from "module"/from "node:module"/g' parser.mjs
 	@echo "✅ Build Complete: parser.mjs & parser.wasm"
 
+# Build the optimized Docker image
+docker-build:
+	@echo "🐳 Building Docker Image..."
+	docker build -t secure-mcp-db:latest .
+
 # Clean build artifacts
 clean:
 	rm -f parser.mjs parser.wasm
